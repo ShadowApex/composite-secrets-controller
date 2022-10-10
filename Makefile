@@ -5,6 +5,10 @@
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
 VERSION ?= 0.0.1
 
+# Docker username for pushes
+DOCKER_USER ?= shadowapex
+DOCKER_REGISTRY ?= ghcr.io
+
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "candidate,fast,stable")
 # To re-generate a bundle for other specific channels without changing the standard setup, you can:
@@ -29,7 +33,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # shadowblip.com/composite-secrets-controller-bundle:$VERSION and shadowblip.com/composite-secrets-controller-catalog:$VERSION.
-IMAGE_TAG_BASE ?= shadowblip.com/composite-secrets-controller
+IMAGE_TAG_BASE ?= ghcr.io/shadowapex/composite-secrets-controller
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
@@ -47,7 +51,9 @@ ifeq ($(USE_IMAGE_DIGESTS), true)
 endif
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG_NAME ?= controller
+IMG_TAG ?= v$(VERSION)
+IMG ?= $(IMG_NAME):$(IMG_TAG)
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.24.2
 
@@ -118,10 +124,25 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: test ## Build docker image with the manager.
 	docker build -t ${IMG} .
+ifdef GITHUB_TOKEN
+	docker tag ${IMG} $(IMG_NAME):latest
+endif
 
 .PHONY: docker-push
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
+ifdef GITHUB_TOKEN
+	docker push $(IMG_NAME):latest
+endif
+
+.PHONY: docker-login
+docker-login: ## Login to docker image registry
+	@echo $(GITHUB_TOKEN) | docker login $(DOCKER_REGISTRY) -u $(DOCKER_USER) --password-stdin
+
+##@ Release
+
+.PHONY: release
+release: docker-login docker-build docker-push ## Publish a release of the controller
 
 ##@ Deployment
 
